@@ -5,8 +5,8 @@
 \title{AvoPhylo: Building phylogenies based on the AvoTrex extinct bird trait
 database and BirdTree backbone}
 \usage{
-AvoPhylo(ctrees, avotrex, tax, PER = 0.2, PER_FIXED = 0.75, Ntree,
-  n.cores = 1, cluster.ips = NULL)
+AvoPhylo(ctrees, avotrex, tax, PER = 0.2, PER_FIXED = 0.75, mindist =
+  0.1, ord = FALSE, Ntree, n.cores = 1, cluster.ips = NULL)
 }
 \arguments{
 \item{ctrees}{Either (i) object (of class multiPhylo) containing multiple
@@ -16,7 +16,7 @@ object of class 'phylo'.}
 
 \item{avotrex}{The AvoTrex extinct species phylogeny database. This database
 contains the information and commands required to graft the extinct species
-on to the BirdTree trees.}
+on to the BirdTree trees. If edited, column names must remain unchanged.}
 
 \item{tax}{The Jetz et al. (2012) BirdTree taxonomy .csv. Supplied as data
 within the package.}
@@ -25,18 +25,36 @@ within the package.}
 (see \code{\link{AvoBind}} for more details). Can be left at the default
 value.}
 
-\item{PER_FIXED}{Point along a branch (expressed as a fraction of the branch
-length, rootward) to graft the species in the phylogeny database
-(\code{avotrex} argument) which are set to TRUE in the per_fixed column (to
-reduce very short branch lengths) (see \code{\link{AvoBind}} for more
-details). Can be left at the default value.}
+\item{PER_FIXED}{Point along a branch (expressed as a fraction
+of the branch length, rootward) to graft the species in the
+phylogeny database (\code{avotrex} argument) which are set
+to TRUE in the per_fixed column (to reduce very short branch
+lengths) (see \code{\link{AvoBind}} for more details). Can
+be left at the default value.}
 
-\item{Ntree}{The number of trees to sample from the supplied number of
-BirdTree trees (i.e., \code{ctrees}). Value must be greater than the number
-of supplied trees (\code{length(ctrees))}.}
+\item{mindist}{When fixing the grafting of a given species at
+a specific time point, but the provided grafting time point
+is too old (i.e., older than the parent node) or too young
+(i.e., younger than the child node) relative to the focal
+branch, grafting will occur \code{mindist} below the parent
+node or above the child node.}
 
-\item{n.cores}{Number of cores used to build the phylogeny. Default is one
-(will run with parallel processing)}
+\item{ord}{Should the trees within \code{ctrees} be kept in
+order (TRUE) and all used (i.e., the output list of trees is
+in the same order as \code{ctrees}) in the grafting, or
+should trees be randomly sampled from \code{ctrees} (FALSE;
+the default) prior to grafting. If \code{ord == TRUE},
+\code{Ntree} must equal the length of \code{ctrees}. If only
+a single tree is provided, this argument does nothing.}
+
+\item{Ntree}{The number of trees to sample from the supplied
+number of BirdTree trees (i.e., \code{ctrees}), if \code{ord
+  == FALSE}. Value must be greater or equal to the number of
+supplied trees (\code{length(ctrees))}. If \code{ord ==
+  TRUE}, \code{Ntree} must equal the length of \code{ctrees}.}
+
+\item{n.cores}{Number of cores used to build the phylogeny.
+Default is one (will run with parallel processing)}
 
 \item{cluster.ips}{Cluster location. Keep as default.}
 }
@@ -55,7 +73,7 @@ Grafting extinct species onto BirdTree phylogenies using the AvoTrex database
 Function to build phylogenies incorporating the extinct species from the
 AvoTrex extinct birds database (Sayol et al.). AvoTrex provides data on
 geographical location, island endemicity, volancy, body size and standard
-external and skeleton morphological measurements for 602 extinct bird
+external and skeleton morphological measurements for 605 extinct bird
 species. The AvoPhylo function provides a pipeline to incorporate the extinct
 species from AvoTrex into the "BirdTree" phylogenies of extant birds (Jetz et
 al. 2012). Utilising codes assigned to each species based on their known
@@ -73,17 +91,33 @@ consist of close relatives, whose exact taxonomic relationships are unknown.
 Therefore, the order in which they are joined is randomised. See Sayol et al.
 and Matthews et al. for further details.
 
-As some of the codes (see table below) randomly place the given species
-within a group of species, a genus, or a family, and some species groups are
-randomised before grafting (see above), it is useful to run the grafting
-procedure over a a number of trees to average out the randomisation.
-Therefore, the function can be run in parallel using the argument
-\code{n.cores}. Note that the function will run on one core as default and if
-only one tree is supplied. Trees can also be randomly selected from a number
-of trees by giving the function a group of trees using the argument
-\code{ctrees} and then defining a smaller number using \code{Ntree}. If the
-maximum number of trees is to be used, \code{Ntree} should equal
-\code{length(ctrees)}.
+For a subset of species (primarily those in older clades), we
+have constrained the grafting to take place at a specific time
+point (value in the 'time_fixed' column) along a given branch,
+rather than at a randomly selected point. If, due to the
+topology of the underlying BirdTree tree, it is not possible
+to undertake this grafting along a given branch (i.e., the
+time point for grafting is either older than the parent node
+or younger than the child node, in respect to a given focal
+branch), we graft the species just below the parent node or
+just above the child node (using a branch length set by
+\code{mindist}).
+
+As some of the codes (see table below) randomly place the
+given species within a group of species, a genus, or a family,
+and some species groups are randomised before grafting (see
+above), it is useful to run the grafting procedure over a a
+number of trees to average out the randomisation. Therefore,
+the function can be run in parallel using the argument
+\code{n.cores}. Note that the function will run on one core as
+default and if only one tree is supplied. Trees for grafting
+can be randomly selected from a number of input trees by
+giving the function a group of input trees using the argument
+\code{ctrees} and then defining a smaller number using
+\code{Ntree}. If the maximum number of input trees is to be
+used, \code{Ntree} should equal \code{length(ctrees)}. If you
+want the outputted list of trees to match the order of trees
+in \code{ctrees}, set \code{ord = TRUE}.
 
 If \code{Ntree} > 1, a progress bar will be displayed.
 
@@ -110,6 +144,7 @@ the \code{\link{plot.avophylo}} documentation.\tabular{lll}{
 # data(AvotrexPhylo)
 # trees <- AvoPhylo(ctrees = BirdTree_trees,
 # avotrex = AvotrexPhylo, PER = 0.2, PER_FIXED = 0.75,
+# mindist = 0.1, ord = FALSE, 
 # tax = BirdTree_tax, Ntree = 1, n.cores = 1, cluster.ips = NULL)
 # class(trees)
 # trees[[1]]

@@ -1,6 +1,6 @@
 utils::globalVariables(c("phylo_id2", "Group",
                          "BLFamilyLatin", "Order",
-                         "Clade", "i"))
+                         "Clade", "i", "stopCluster"))
 
 #' AvoPhylo: Building phylogenies based on the AvoTrex extinct bird trait
 #' database and BirdTree backbone
@@ -8,14 +8,14 @@ utils::globalVariables(c("phylo_id2", "Group",
 #' @description
 #' Grafting extinct species onto BirdTree phylogenies using the AvoTrex database
 #' 
-#' @usage AvoPhylo(ctrees, avotrex, tax, PER = 0.2, PER_FIXED = 0.75, Ntree,
-#'   n.cores = 1, cluster.ips = NULL)
+#' @usage AvoPhylo(ctrees, avotrex, tax, PER = 0.2, PER_FIXED = 0.75, mindist =
+#'   0.1, ord = FALSE, Ntree, n.cores = 1, cluster.ips = NULL)
 #' 
 #' @details
 #' Function to build phylogenies incorporating the extinct species from the
 #' AvoTrex extinct birds database (Sayol et al.). AvoTrex provides data on
 #' geographical location, island endemicity, volancy, body size and standard
-#' external and skeleton morphological measurements for 602 extinct bird
+#' external and skeleton morphological measurements for 605 extinct bird
 #' species. The AvoPhylo function provides a pipeline to incorporate the extinct
 #' species from AvoTrex into the "BirdTree" phylogenies of extant birds (Jetz et
 #' al. 2012). Utilising codes assigned to each species based on their known
@@ -33,17 +33,33 @@ utils::globalVariables(c("phylo_id2", "Group",
 #' Therefore, the order in which they are joined is randomised. See Sayol et al.
 #' and Matthews et al. for further details.
 #' 
-#' As some of the codes (see table below) randomly place the given species
-#' within a group of species, a genus, or a family, and some species groups are
-#' randomised before grafting (see above), it is useful to run the grafting
-#' procedure over a a number of trees to average out the randomisation.
-#' Therefore, the function can be run in parallel using the argument
-#' \code{n.cores}. Note that the function will run on one core as default and if
-#' only one tree is supplied. Trees can also be randomly selected from a number
-#' of trees by giving the function a group of trees using the argument
-#' \code{ctrees} and then defining a smaller number using \code{Ntree}. If the
-#' maximum number of trees is to be used, \code{Ntree} should equal
-#' \code{length(ctrees)}.
+#' For a subset of species (primarily those in older clades), we
+#' have constrained the grafting to take place at a specific time
+#' point (value in the 'time_fixed' column) along a given branch,
+#' rather than at a randomly selected point. If, due to the
+#' topology of the underlying BirdTree tree, it is not possible
+#' to undertake this grafting along a given branch (i.e., the
+#' time point for grafting is either older than the parent node
+#' or younger than the child node, in respect to a given focal
+#' branch), we graft the species just below the parent node or
+#' just above the child node (using a branch length set by
+#' \code{mindist}).
+#' 
+#' As some of the codes (see table below) randomly place the
+#' given species within a group of species, a genus, or a family,
+#' and some species groups are randomised before grafting (see
+#' above), it is useful to run the grafting procedure over a a
+#' number of trees to average out the randomisation. Therefore,
+#' the function can be run in parallel using the argument
+#' \code{n.cores}. Note that the function will run on one core as
+#' default and if only one tree is supplied. Trees for grafting
+#' can be randomly selected from a number of input trees by
+#' giving the function a group of input trees using the argument
+#' \code{ctrees} and then defining a smaller number using
+#' \code{Ntree}. If the maximum number of input trees is to be
+#' used, \code{Ntree} should equal \code{length(ctrees)}. If you
+#' want the outputted list of trees to match the order of trees
+#' in \code{ctrees}, set \code{ord = TRUE}.
 #' 
 #' If \code{Ntree} > 1, a progress bar will be displayed.
 #' 
@@ -81,22 +97,38 @@ utils::globalVariables(c("phylo_id2", "Group",
 #'   object of class 'phylo'.
 #' @param avotrex The AvoTrex extinct species phylogeny database. This database
 #'   contains the information and commands required to graft the extinct species
-#'   on to the BirdTree trees.
+#'   on to the BirdTree trees. If edited, column names must remain unchanged.
 #' @param tax The Jetz et al. (2012) BirdTree taxonomy .csv. Supplied as data
 #'   within the package.
 #' @param PER Percentage/fraction for branch truncation based on random grafting
 #'   (see \code{\link{AvoBind}} for more details). Can be left at the default
 #'   value.
-#' @param PER_FIXED Point along a branch (expressed as a fraction of the branch
-#'   length, rootward) to graft the species in the phylogeny database
-#'   (\code{avotrex} argument) which are set to TRUE in the per_fixed column (to
-#'   reduce very short branch lengths) (see \code{\link{AvoBind}} for more
-#'   details). Can be left at the default value.
-#' @param Ntree The number of trees to sample from the supplied number of
-#'   BirdTree trees (i.e., \code{ctrees}). Value must be greater than the number
-#'   of supplied trees (\code{length(ctrees))}.
-#' @param n.cores Number of cores used to build the phylogeny. Default is one
-#'   (will run with parallel processing)
+#' @param PER_FIXED Point along a branch (expressed as a fraction
+#'   of the branch length, rootward) to graft the species in the
+#'   phylogeny database (\code{avotrex} argument) which are set
+#'   to TRUE in the per_fixed column (to reduce very short branch
+#'   lengths) (see \code{\link{AvoBind}} for more details). Can
+#'   be left at the default value.
+#' @param mindist When fixing the grafting of a given species at
+#'   a specific time point, but the provided grafting time point
+#'   is too old (i.e., older than the parent node) or too young
+#'   (i.e., younger than the child node) relative to the focal
+#'   branch, grafting will occur \code{mindist} below the parent
+#'   node or above the child node.
+#' @param ord Should the trees within \code{ctrees} be kept in
+#'   order (TRUE) and all used (i.e., the output list of trees is
+#'   in the same order as \code{ctrees}) in the grafting, or
+#'   should trees be randomly sampled from \code{ctrees} (FALSE;
+#'   the default) prior to grafting. If \code{ord == TRUE},
+#'   \code{Ntree} must equal the length of \code{ctrees}. If only
+#'   a single tree is provided, this argument does nothing.
+#' @param Ntree The number of trees to sample from the supplied
+#'   number of BirdTree trees (i.e., \code{ctrees}), if \code{ord
+#'   == FALSE}. Value must be greater or equal to the number of
+#'   supplied trees (\code{length(ctrees))}. If \code{ord ==
+#'   TRUE}, \code{Ntree} must equal the length of \code{ctrees}.
+#' @param n.cores Number of cores used to build the phylogeny.
+#'   Default is one (will run with parallel processing)
 #' @param cluster.ips Cluster location. Keep as default. 
 #' @return The function returns an object of class
 #'   'multiAvophylo', which is a list consisting of N trees (each
@@ -105,6 +137,7 @@ utils::globalVariables(c("phylo_id2", "Group",
 #'   extinct species from AvoTrex grafted on. For more details on
 #'   the grafting, see: Sayol et al. (IN PREP).
 #' @importFrom parallel makeCluster
+#' @importFrom parallel stopCluster
 #' @importFrom snow makeSOCKcluster
 #' @importFrom doParallel registerDoParallel
 #' @importFrom doSNOW registerDoSNOW
@@ -113,6 +146,7 @@ utils::globalVariables(c("phylo_id2", "Group",
 #' @importFrom dplyr filter
 #' @importFrom stringr str_split
 #' @importFrom stats runif
+#' @importFrom utils getFromNamespace
 #' @import ape
 #' @examples 
 #' # data(BirdTree_trees)
@@ -120,6 +154,7 @@ utils::globalVariables(c("phylo_id2", "Group",
 #' # data(AvotrexPhylo)
 #' # trees <- AvoPhylo(ctrees = BirdTree_trees,
 #' # avotrex = AvotrexPhylo, PER = 0.2, PER_FIXED = 0.75,
+#' # mindist = 0.1, ord = FALSE, 
 #' # tax = BirdTree_tax, Ntree = 1, n.cores = 1, cluster.ips = NULL)
 #' # class(trees)
 #' # trees[[1]]
@@ -135,12 +170,15 @@ AvoPhylo <- function(
     tax, 
     PER = 0.2,
     PER_FIXED = 0.75,
+    mindist = 0.1,
+    ord = FALSE,
     Ntree,
     n.cores = 1,
     cluster.ips = NULL
     ){
   
-
+  avotrex <- as.data.frame(avotrex)
+  
   if (!all(avotrex$Type %in% c("AP","RFG","RGG", "RGG2", "RSG", 
                                "RSGG","RSGG2","S","SFG", 
                                "SGG","SGG2","SOG","SSG",
@@ -164,14 +202,29 @@ AvoPhylo <- function(
     })
   }
   
+  if (length(ord) != 1 | !is.logical(ord)){
+    stop("ord should be logical and of length 1")
+  }
+  
+  avotrex$time_fixed <- suppressWarnings(as.numeric(avotrex$time_fixed))#NA warning fine (just because already NAs in column)
+  
+  if (!all(sapply(avotrex$time_fixed, 
+                  function(y) (is.na(y) | is.numeric(y))))){
+    stop("time_fixed values should be either NA or numeric")
+  }
+  
   #subset a number of trees you want to run
   if (inherits(ctrees, "phylo")){ #ie one tree not in list
     if (Ntree != 1){stop("Error: Number of sampled trees greater than the number of supplied trees.")}
     ctrees <- list(ctrees)
     class(ctrees) <- "multiPhylo"
-    } else {
+  } else {
     if (length(ctrees) < Ntree){stop("Error: Number of sampled trees greater than the number of supplied trees.")}
-    ctrees <- sample(ctrees, Ntree, replace = F)
+    if (!ord){
+      ctrees <- sample(ctrees, Ntree, replace = F)
+    } else {
+      if (length(ctrees) != Ntree) {stop("Error: Ntree must equal length of ctrees if ord == TRUE")}
+    }
   }
   
   if (Ntree < n.cores){
@@ -192,6 +245,7 @@ AvoPhylo <- function(
   if (exists("temp.cluster")) {
     doParallel::registerDoParallel(cl = temp.cluster)
     doSNOW::registerDoSNOW(temp.cluster)
+    on.exit(stopCluster(temp.cluster))
   }
   
   #Set a progress bar to return progress of the foreach loop: for one core this is updated within the loop
@@ -221,9 +275,11 @@ AvoPhylo <- function(
       ctree <- ctrees[[i]]   # Each loop we do one tree
       
       ## Reorder the dataset 
-      ex <- as.data.frame(avotrex)
+      ex <- avotrex
       ex <- ex[order(ex$Id_sps),]
       row.names(ex) <- 1:nrow(ex)
+      
+      if (any(ex$phylo_id2 == "xS")){
       
       ## Subset the species to randomly shuffle
       shuff <- dplyr::filter(ex, phylo_id2 == "xS")
@@ -243,17 +299,22 @@ AvoPhylo <- function(
       }
       
       row.names(ex) <- 1:nrow(ex)
+      }#eo if xs
       
       # For each extinct species find the optimum place to bind 
       for(j in 1:nrow(ex)){
         
-        #extract the species' per code and set the PER_VAL and
+        #First check if species is time_fixed, and if so, extract the time point
+        #info. If not extract the species' per code and set the PER_VAL and
         #per_fixed values.
         #For the clades with many closely related extinct species,
         #they have a per_fixed value of TRUE in the database. For these,
         #set per to 0.75 (or PER_FIXED provided value) to try to avoid 
         #really short terminal branches
         #(although sometimes this is forced due to BirdTree typology)
+        time_fix <- ex$time_fixed[j]
+        if (is.na(time_fix)){
+          time_graft <- FALSE
         per_val <- ex$per_fixed[j]
         if (per_val){
           PER_VAL <- PER_FIXED
@@ -261,7 +322,20 @@ AvoPhylo <- function(
         } else {
           PER_VAL <- PER
           pfv <- FALSE
-        }
+        }#eo if per_val
+        } else {
+          time_graft <- TRUE
+          PER_VAL <- time_fix
+          pfv <- NULL
+          if (length(mindist) > 1 | (!is.numeric(mindist))){
+            stop("mindist must be a numeric vector of length 1")
+          }
+          if (ex$Type[j] == "S"){
+            terminal <- TRUE
+          } else {
+            terminal <- FALSE
+          }#eo if type == S
+          }#eo if time_val
         
         # Code for checking where individual trees break
         # vec <- paste0(j, ex[j,]$species)
@@ -556,7 +630,9 @@ AvoPhylo <- function(
         # As a final step, Bind the extinct sp. on to tree
         ctree <- AvoBind(tree = ctree, node = nodeX,
                          per = PER_VAL, per_fixed = pfv,
-                         sp_name = ex$species[j])
+                         sp_name = ex$species[j],
+                         time_graft = time_graft,
+                         terminal = terminal, mindist = mindist)
 
       } #eo for j
 
@@ -573,6 +649,9 @@ AvoPhylo <- function(
 
   ## Finish Tree ## 
   class(ctreesComplete) <- c("multiAvophylo", "multiPhylo")    # Change the class
+  
+  fun <- utils::getFromNamespace(".foreachGlobals", "foreach")
+  rm(list=ls(name=fun), pos=fun)
   
   return(ctreesComplete)
   
