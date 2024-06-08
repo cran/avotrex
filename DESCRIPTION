@@ -1,5 +1,5 @@
 Package: avotrex
-Version: 1.1.0
+Version: 1.2.0
 Type: Package
 Title: A Global Dataset of Anthropogenic Extinct Birds and their
         Traits: Phylogeny Builder
@@ -22,7 +22,7 @@ License: GPL-3
 Suggests: testthat, markdown, knitr, rmarkdown, covr
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2024-05-31 14:51:42 UTC; Joe
+Packaged: 2024-06-07 20:05:49 UTC; Joe
 Author: Joseph Wayman [aut, cre] (<https://orcid.org/0000-0002-3122-8070>),
   Thomas J. Matthews [aut] (<https://orcid.org/0000-0002-7624-244X>),
   Paul Dufour [ctb],
@@ -30,4 +30,4 @@ Author: Joseph Wayman [aut, cre] (<https://orcid.org/0000-0002-3122-8070>),
   Pedro Cardoso [ctb]
 Maintainer: Joseph Wayman <j.wayman@bham.ac.uk>
 Repository: CRAN
-Date/Publication: 2024-05-31 15:12:59 UTC
+Date/Publication: 2024-06-08 21:50:17 UTC
