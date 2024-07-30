@@ -1,6 +1,8 @@
-utils::globalVariables(c("phylo_id2", "Group",
+utils::globalVariables(c("phylo_id", "group",
                          "BLFamilyLatin", "Order",
-                         "Clade", "i", "stopCluster"))
+                         "Clade", "i", "stopCluster",
+                         "type", "jetz_family",
+                         "jetz_order"))
 
 #' AvoPhylo: Building phylogenies based on the AvoTrex extinct bird trait
 #' database and BirdTree backbone
@@ -15,7 +17,7 @@ utils::globalVariables(c("phylo_id2", "Group",
 #' Function to build phylogenies incorporating the extinct species from the
 #' AvoTrex extinct birds database (Sayol et al.). AvoTrex provides data on
 #' geographical location, island endemicity, volancy, body size and standard
-#' external and skeleton morphological measurements for 605 extinct bird
+#' external and skeleton morphological measurements for 610 extinct bird
 #' species. The AvoPhylo function provides a pipeline to incorporate the extinct
 #' species from AvoTrex into the "BirdTree" phylogenies of extant birds (Jetz et
 #' al. 2012). Utilising codes assigned to each species based on their known
@@ -25,13 +27,18 @@ utils::globalVariables(c("phylo_id2", "Group",
 #' 
 #' BirdTree phylogenies can be sourced from: https://birdtree.org/
 #' 
-#' The species are grafted onto the tree in a set order provided in the column
-#' "Id_sps", as certain species need to be grafted onto the tree before other
-#' species. Some species are assigned to groups within the data. These species
-#' are assigned a code "xS" within the column "phylo_id2". These species groups
-#' consist of close relatives, whose exact taxonomic relationships are unknown.
-#' Therefore, the order in which they are joined is randomised. See Sayol et al.
-#' and Matthews et al. for further details.
+#' As certain species need to be grafted onto the tree before
+#' other species, a number of the species are grafted in a set
+#' order. This ordering is controlled through the “sp_id”,
+#' “phylo_id” and “group” columns in the extinct species
+#' phylogeny database. Before grafting, the database is ordered
+#' by the “sp_id” column, with the “phylo_id” and “group” columns
+#' used to filter out particular groups of species (i.e., those
+#' classified as "xS" in the "phylo_id" column) to be grafted in
+#' different orders (i.e., either a randomised order within
+#' groups, or a fixed order within groups). See the package
+#' vignette, as  well as Sayol et al. and Matthews et al., for
+#' further details.
 #' 
 #' For a subset of species (primarily those in older clades), we
 #' have constrained the grafting to take place at a specific time
@@ -46,11 +53,11 @@ utils::globalVariables(c("phylo_id2", "Group",
 #' \code{mindist} - if \code{mindist} is longer than the focal
 #' branch in a given grafting event, it is adjusted accordingly).
 #' 
-#' As some of the codes (see table below) randomly place the
-#' given species within a group of species, a genus, or a family,
-#' and some species groups are randomised before grafting (see
-#' above), it is useful to run the grafting procedure over a a
-#' number of trees to average out the randomisation. Therefore,
+#' As some of the grafting codes (see table below) randomly place
+#' the given species within a group of species, a genus, or a
+#' family, and some species groups are randomised before grafting
+#' (see above), it is useful to run the grafting procedure over a
+#' a number of trees to average out the randomisation. Therefore,
 #' the function can be run in parallel using the argument
 #' \code{n.cores}. Note that the function will run on one core as
 #' default and if only one tree is supplied. Trees for grafting
@@ -133,10 +140,9 @@ utils::globalVariables(c("phylo_id2", "Group",
 #' @param cluster.ips Cluster location. Keep as default. 
 #' @return The function returns an object of class
 #'   'multiAvophylo', which is a list consisting of N trees (each
-#'   of class 'avophylo' and 'phylo') that were randomly selected
-#'   from the supplied number. These trees have all had the
-#'   extinct species from AvoTrex grafted on. For more details on
-#'   the grafting, see: Sayol et al. (IN PREP).
+#'   of class 'avophylo' and 'phylo') that were selected from the
+#'   supplied set of input trees. These ouput trees have all had
+#'   the extinct species from AvoTrex grafted on.
 #' @importFrom parallel makeCluster
 #' @importFrom parallel stopCluster
 #' @importFrom snow makeSOCKcluster
@@ -180,11 +186,11 @@ AvoPhylo <- function(
   
   avotrex <- as.data.frame(avotrex)
   
-  if (!all(avotrex$Type %in% c("AP","RFG","RGG", "RGG2", "RSG", 
+  if (!all(avotrex$type %in% c("AP","RFG","RGG", "RGG2", "RSG", 
                                "RSGG","RSGG2","S","SFG", 
                                "SGG","SGG2","SOG","SSG",
                                "RCG", "ROG"))){
-    stop("Group column in avotrex argument contains invalid codes")
+    stop("group column in avotrex argument contains invalid codes")
   }
   
   if (PER < 0 | PER > 1){
@@ -264,7 +270,7 @@ AvoPhylo <- function(
     opts <- NULL
   }
   
-  avotrex$Group <- suppressWarnings(as.numeric(avotrex$Group))#NA warning fine (just because already NAs in Group)
+  avotrex$group <- suppressWarnings(as.numeric(avotrex$group))#NA warning fine (just because already NAs in group)
   
   #Run the parallel dataprep
   ctreesComplete <- foreach(
@@ -281,24 +287,24 @@ AvoPhylo <- function(
       
       ## Reorder the dataset 
       ex <- avotrex
-      ex <- ex[order(ex$Id_sps),]
+      ex <- ex[order(ex$sp_id),]
       row.names(ex) <- 1:nrow(ex)
       
-      if (any(ex$phylo_id2 == "xS")){
+      if (any(ex$phylo_id == "xS")){
       
       ## Subset the species to randomly shuffle
-      shuff <- dplyr::filter(ex, phylo_id2 == "xS")
+      shuff <- dplyr::filter(ex, phylo_id == "xS")
 
       ## Remove those species from the initial DB
-      ex <- dplyr::filter(ex, !phylo_id2 == "xS")
+      ex <- dplyr::filter(ex, !phylo_id == "xS")
       ## Set the order
-      groups <- as.numeric(unique(shuff$Group))
+      groups <- as.numeric(unique(shuff$group))
       groups <- sort(groups)
       
       for(p in 1:length(groups)){
         
-        shuff2 <- dplyr::filter(shuff, Group == groups[p])
-        shuff2 <-  shuff2[sample(1:nrow(shuff2)), ]
+        shuff2 <- dplyr::filter(shuff, group == groups[p])
+        shuff2 <- shuff2[sample(1:nrow(shuff2)), ]
         ex <- rbind(ex, shuff2)
         
       }
@@ -306,8 +312,20 @@ AvoPhylo <- function(
       row.names(ex) <- 1:nrow(ex)
       }#eo if xs
       
+      #create copy which is used in the check_ext() function;
+      #this adds extinct order, family and genus names to the
+      #jetz columns
+      ex2 <- ex
+      Bl_levs <- c("order", "family", "genus")
+      BT_levs <- c("jetz_order", "jetz_family", "jetz_genus")
+      for (z in 1:length(Bl_levs)){
+        wlevs <- which(ex2[,BT_levs[z]] == "Extinct")
+        ex2[wlevs,BT_levs[z]] <- ex2[wlevs,Bl_levs[z]]
+      }
+      ex2$jetz_order <- toupper(ex2$jetz_order)
+      
       # For each extinct species find the optimum place to bind 
-      for(j in 1:nrow(ex)){
+      for (j in 1:nrow(ex)){
         
         #First check if species is time_fixed, and if so, extract the time point
         #info. If not extract the species' per code and set the PER_VAL and
@@ -335,7 +353,7 @@ AvoPhylo <- function(
           if (length(mindist) > 1 | (!is.numeric(mindist))){
             stop("mindist must be a numeric vector of length 1")
           }
-          if (ex$Type[j] == "S"){
+          if (ex$type[j] == "S"){
             terminal <- TRUE
           } else {
             terminal <- FALSE
@@ -347,116 +365,99 @@ AvoPhylo <- function(
         # write.csv(vec, paste0("Broke/broke_", i, ".csv"), row.names = F)
         
         # AP = Already present - Nothing needs to be done  
-        if(ex$Type[j] == "AP"){
+        if (ex$type[j] == "AP"){
           next
-        } else if(ex$Type[j] == "S"){
+        } else if (ex$type[j] == "S"){
           ## Scenario 1.1: Add target species as a single sister of species X 
           ## - S (SISTER SPECIES)
           
           # Get the tip location for the sister sp.
-          nodeX <- which(ctree$tip.label == paste0(ex$Sister_genus[j], 
-                                                   "_", ex$Sister_species[j])) 
+          nodeX <- which(ctree$tip.label == paste0(ex$sister_genus[j], 
+                                                   "_", ex$sister_species[j])) 
           
-        } else if(ex$Type[j] %in% c("SSG", "SGG", "SGG2", "SFG", "SOG")){
+        } else if (ex$type[j] %in% c("SSG", "SGG", "SGG2", "SFG", "SOG")){
           ## Scenario 1.2: Add species as a sister (outgroup) of a group of
           ## species ## - SSG (SISTER SPECIES GROUP) & SGG (SISTER GENUS GROUP)
           ## & SFG (SISTER FAMILY GROUP) & SOG (SISTER ORDER GROUP)
           
-          if(ex$Type[j] == "SSG"){
+          if (ex$type[j] == "SSG"){
             
             # Separate the species in the "sister_species_group" column
-            sp <- stringr::str_split(ex$Sister_species_group[j], pattern = ";")
-            spv <- vector()
-            
-            for(x in 1:length(sp[[1]])){
-              
-              spv <- c(spv, paste0(sp[[1]][x]))
-              
-            } # Make the species group as a vector
-            
+            sp <- stringr::str_split(ex$sister_species_group[j], pattern = ";")
+            spv <- sp[[1]]
+
             # This selects the most recent common ancestor for the group of species
             nodeX <- getMRCA(ctree, spv) 
-          }else if(ex$Type[j] == "SGG"){
+          } else if (ex$type[j] == "SGG"){
             
             # If only one species is present within the genus, then make a
             # sister to that species
-            if(length(ctree$tip.label[grep(paste0(ex$Sister_genus[j], "_"), 
+            if (length(ctree$tip.label[grep(paste0(ex$sister_genus[j], "_"), 
                                             ctree$tip.label)]) == 1){
               # Get the tip location for the sister sp.
               nodeX <- which(ctree$tip.label == 
-                               ctree$tip.label[grep(paste0(ex$Sister_genus[j], 
+                               ctree$tip.label[grep(paste0(ex$sister_genus[j], 
                                                            "_"), ctree$tip.label)]) 
 
-            }else{
+            } else {
 
               # Get most recent common ancestor of genus 
               nodeX <- getMRCA(ctree, 
-                               ctree$tip.label[grep(paste0(ex$Sister_genus[j], 
+                               ctree$tip.label[grep(paste0(ex$sister_genus[j], 
                                                            "_"), ctree$tip.label)]) 
  
             }
-          }else if(ex$Type[j] == "SGG2"){
+          } else if (ex$type[j] == "SGG2"){
             
-            sp <- stringr::str_split(ex$Sister_genus[j], pattern = ";")
+            sp <- stringr::str_split(ex$sister_genus[j], pattern = ";")
             spv <- vector()
             
             # Get all the species in the genera
-            for(x in 1:length(sp[[1]])){
+            for (x in 1:length(sp[[1]])){
               
               spv <- c(spv, ctree$tip.label[grep(paste0(sp[[1]][x], "_"),
                                                  ctree$tip.label)])
               
             }
-            
             # Get most recent common ancestor of species group
             nodeX <- getMRCA(ctree, spv)  
-          }else if(ex$Type[j] == "SFG"){
+          } else if (ex$type[j] == "SFG"){
             
             # Get all species within the family 
-            fam <- dplyr::filter(tax, BLFamilyLatin == ex$Sister_family[j])
-            spv <- vector()
-            
-            for(x in 1:nrow(fam)){
-              
-              spv <- c(spv, paste0(fam$Genus[x], "_", fam$Species[x]))
-              
-            } # Make the species group as a vector
+            fam <- dplyr::filter(tax, 
+                                 BLFamilyLatin == ex$sister_family[j])
+            spv <- fam$TipLabel
+            #add in extinct sp already grafted
+            spv <- check_ext(ex2, level = ex$sister_family[j], 
+                             ctree, spv, code = "SFG")
             
             # This selects the most recent common ancestor for the group of species
             nodeX <- getMRCA(ctree, spv)
-          }else if(ex$Type[j] == "SOG"){
+          } else if (ex$type[j] == "SOG"){
             
             # Get all species within the family 
-            ord <- dplyr::filter(tax, Order == ex$Sister_order[j])
-            spv <- vector()
-            
-            for(x in 1:nrow(ord)){
-              
-              spv <- c(spv, paste0(ord$Genus[x], "_", ord$Species[x]))
-              
-            } # Make the species group as a vector
-            
+            ord <- dplyr::filter(tax, Order == ex$sister_order[j])
+            spv <- ord$TipLabel
+            #add in extinct sp already grafted
+            spv <- check_ext(ex2, level = ex$sister_order[j], 
+                             ctree, spv, code = "SOG")
+         
             # This selects the most recent common ancestor for the group of species
             nodeX <- getMRCA(ctree, spv) 
           }
           
-        } else if(ex$Type[j] %in% c("RSG", "RGG", "RGG2", "RCG", "RFG", "ROG")){
+        } else if (ex$type[j] %in% c("RSG", "RGG", "RGG2", "RCG", "RFG", "ROG")){
           ## Scenario 2.1: Add species randomly within of a group of species ##
           ## - RSG (RANDOM SPECIES GROUP) & RGG (RANDOM GENUS GROUP) & RFG
           ## (RANDOM FAMILY GROUP) & ROG (RANDOM ORDER GROUP)
           
-          if(ex$Type[j] == "RSG"){
+          if (ex$type[j] == "RSG"){
             
             # Separate the species in the "sister_species_group" column
-            sp <- stringr::str_split(ex$Sister_species_group[j], pattern = ";")
-            spv <- vector()
-            
-            for(x in 1:length(sp[[1]])){
-              
-              spv <- c(spv, paste0(sp[[1]][x]))
-              
-            } 
-            
+            sp <- stringr::str_split(ex$sister_species_group[j], 
+                                     pattern = ";")
+            spv <- sp[[1]]
+    
             ## Randomly select one of the species from the listed group. If it
             ## is not present in the tree yet, remove from the list and select
             ## again. Will break if all species have been attempted and there
@@ -467,45 +468,39 @@ AvoPhylo <- function(
               # Get the tip location for the sister sp.
               nodeX <- which(ctree$tip.label == spv2) 
               # Break if there is a node value
-              if(length(nodeX) != 0) break else{
+              if (length(nodeX) != 0) break else{
                 spv <- spv[!spv == spv2]
               }
-              if(length(spv) == 0) break
+              if (length(spv) == 0) break
               
             }
             
             ## Check if the node still is length zero
-            if(length(nodeX) == 0){message(paste0("Node is still zero length for ", 
-                                                ex$Type[j], " for species ", 
+            if (length(nodeX) == 0){message(paste0("Node is still zero length for ", 
+                                                ex$type[j], " for species ", 
                                                 ex$species[j],
                                                 " (row ", j, ") after random species selection."))}
 
-          }else if(ex$Type[j] == "RGG"){
+          } else if (ex$type[j] == "RGG"){
             
             # Get all the species in the genus
-            sp <- stringr::str_split(ex$Sister_genus[j], pattern = ";")
-            spv <- vector()
-            
-            # Get all the species in the genera
-            for(x in 1:length(sp[[1]])){
-              
-              spv <- c(spv, ctree$tip.label[grep(paste0(sp[[1]][x], "_"), 
-                                                 ctree$tip.label)])
-              
-            }
+            sp <- ex$sister_genus[j]
+            spv <- ctree$tip.label[grep(paste0(sp, "_"), 
+                                        ctree$tip.label)]
             
             #Randomly select one of the species
             spv2 <- sample(spv, 1)
             
             # Get the tip location for the sister sp.
             nodeX <- which(ctree$tip.label == spv2) 
-          }else if(ex$Type[j] == "RGG2"){
+          } else if (ex$type[j] == "RGG2"){
             
-            sp <- stringr::str_split(ex$Sister_genus[j], pattern = ";")
+            sp <- stringr::str_split(ex$sister_genus[j], pattern = ";")
             spv <- vector()
             
-            # Get all the species in the genera
-            for(x in 1:length(sp[[1]])){
+            # Get all the species in the genera (incl extinct 
+            # already grafted)
+            for (x in 1:length(sp[[1]])){
               
               spv <- c(spv, ctree$tip.label[grep(paste0(sp[[1]][x], "_"), 
                                                  ctree$tip.label)])
@@ -517,73 +512,71 @@ AvoPhylo <- function(
             
             # Get the tip location for the sister sp.
             nodeX <- which(ctree$tip.label == spv2) 
-          }else if(ex$Type[j] == "RFG"){
+          } else if (ex$type[j] == "RFG"){
             
             # Get all species within the family 
-            fam <- dplyr::filter(tax, BLFamilyLatin == ex$Sister_family[j])
-            spv <- vector()
-            
-            for(x in 1:nrow(fam)){
-              
-              spv <- c(spv, paste0(fam$Genus[x], "_", fam$Species[x]))
-              
-            } # Make the species group as a vector
-            
+            fam <- dplyr::filter(tax, 
+                                 BLFamilyLatin == ex$sister_family[j])
+            spv <- fam$TipLabel
+            #add in extinct sp already grafted in this family
+            spv <- check_ext(ex2, level = ex$sister_family[j], 
+                             ctree, spv, code = "RFG")
+
             #Randomly select one of the species
             spv2 <- sample(spv, 1)
             
             # Get the tip location for the sister sp.
             nodeX <- which(ctree$tip.label == spv2) 
-          }else if(ex$Type[j] == "RCG"){
-            
-            # Get all species within the family 
-            fam <- dplyr::filter(tax, Clade == ex$Sister_clade[j])
-            spv <- vector()
-            
-            for(x in 1:nrow(fam)){
-              
-              spv <- c(spv, paste0(fam$Genus[x], "_", fam$Species[x]))
-              
-            } # Make the species group as a vector
-            
-            #Randomly select one of the species
-            spv2 <- sample(spv, 1)
-            
-            # Get the tip location for the sister sp.
-            nodeX <- which(ctree$tip.label == spv2) 
-          }else if(ex$Type[j] == "ROG"){
-            
-            # Get all species within the family 
-            ord <- dplyr::filter(tax, Order == ex$Sister_family[j])
-            spv <- vector()
-            
-            for(x in 1:nrow(fam)){
-              
-              spv <- c(spv, paste0(ord$Genus[x], "_", ord$Species[x]))
-              
-            } # Make the species group as a vector
-            
-            #Randomly select one of the species
-            spv2 <- sample(spv, 1)
-            
-            # Get the tip location for the sister sp.
-            nodeX <- which(ctree$tip.label == spv2) 
-          }
-          
-        } else if(ex$Type[j] %in% c("RSGG", "RSGG2")){
+           } # else if (ex$type[j] == "RCG"){
+          # 
+          #   # Get all species within the family
+          #   fam <- dplyr::filter(tax, Clade == ex$sister_clade[j])
+          #   spv <- vector()
+          # 
+          #   for (x in 1:nrow(fam)){
+          # 
+          #     spv <- c(spv, paste0(fam$Genus[x], "_", fam$Species[x]))
+          # 
+          #   } # Make the species group as a vector
+          # 
+          #   #Randomly select one of the species
+          #   spv2 <- sample(spv, 1)
+          # 
+          #   # Get the tip location for the sister sp.
+          #   nodeX <- which(ctree$tip.label == spv2)
+          # } else if (ex$type[j] == "ROG"){
+          # 
+          #   # Get all species within the family
+          #   ord <- dplyr::filter(tax, Order == ex$sister_family[j])
+          #   spv <- vector()
+          # 
+          #   for(x in 1:nrow(fam)){
+          # 
+          #     spv <- c(spv, paste0(ord$Genus[x], "_", ord$Species[x]))
+          # 
+          #   } # Make the species group as a vector
+          # 
+          #   #Randomly select one of the species
+          #   spv2 <- sample(spv, 1)
+          # 
+          #   # Get the tip location for the sister sp.
+          #   nodeX <- which(ctree$tip.label == spv2)
+          # }
+          # 
+        } else if (ex$type[j] %in% c("RSGG", "RSGG2")){
           ## Scenario 3.1: Add species as a sister to a genus selected randomly
           ## from a supplied group of genera (RSGG) or a random genus from a
           ## supplied family (RSGG2)
           
-          if(ex$Type[j] == "RSGG"){
+          if (ex$type[j] == "RSGG"){
             
             #Split the supplied genera
-            sp <- stringr::str_split(ex$Sister_genus[j], pattern = ";")
+            sp <- stringr::str_split(ex$sister_genus[j], pattern = ";")
             
             #Randomly select one of the genera
             spv2 <- sample(sp[[1]], 1)
             
-            if(length(ctree$tip.label[grep(paste0(spv2, "_"), 
+            if (length(ctree$tip.label[grep(paste0(spv2, "_"), 
                                            ctree$tip.label)]) == 1){
               
               # Get the tip location for single species in the genus
@@ -591,37 +584,29 @@ AvoPhylo <- function(
                                ctree$tip.label[grep(paste0(spv2, "_"), 
                                                     ctree$tip.label)]) 
               
-            }else{
+            } else {
               # Get most recent common ancestor of genus 
               nodeX <- getMRCA(ctree, ctree$tip.label[grep(paste0(spv2, "_"), 
                                                            ctree$tip.label)]) 
             }
           }
           
-          if(ex$Type[j] == "RSGG2"){
+          if (ex$type[j] == "RSGG2"){
             
             # Get all genera within the family 
-            fam <- dplyr::filter(tax, BLFamilyLatin == ex$Sister_family[j])
-            spv <- vector()
-            
-            for(x in 1:nrow(fam)){
-              
-              spv <- c(spv, paste0(fam$Genus[x]))
-              
-            } # Make the species group as a vector
-            
-            spv <- unique(spv)
-            
+            fam <- dplyr::filter(tax, BLFamilyLatin == ex$sister_family[j])
+            spv <- unique(fam$Genus)
+
             #Randomly select one of the genera
             spv2 <- sample(spv, 1)
             
-            if(length(ctree$tip.label[grep(paste0(spv2, "_"), 
+            if (length(ctree$tip.label[grep(paste0(spv2, "_"), 
                                            ctree$tip.label)]) == 1){
               # Get the tip location for single species in the genus
               nodeX <- which(ctree$tip.label == 
                                ctree$tip.label[grep(paste0(spv2, "_"), 
                                                     ctree$tip.label)]) 
-            } else{
+            } else {
               # Get most recent common ancestor of genus 
               nodeX <- getMRCA(ctree,ctree$tip.label[grep(paste0(spv2, "_"), 
                                                           ctree$tip.label)]) 
@@ -629,7 +614,7 @@ AvoPhylo <- function(
           } #eo if RSGG2
           
         } else {
-          stop("Code / Type not recognised")
+          stop("Code / type not recognised")
         }#eo main if statements
         
         # As a final step, Bind the extinct sp. on to tree
@@ -670,3 +655,26 @@ AvoPhylo <- function(
   return(ctreesComplete)
   
 }
+
+#Internal function to check which extinct species from
+#a given family or order have already been grafted, and
+#to select those that have
+#' @importFrom dplyr filter
+check_ext <- function(ex2, level, ctree, spv, code){
+  if (code == "RFG" | code == "SFG"){
+    spvE <- dplyr::filter(ex2, 
+                          type != "AP",
+                          jetz_family == level)
+  } else if (code == "SOG"){
+    spvE <- dplyr::filter(ex2, 
+                          type != "AP",
+                          jetz_order == level)
+  }
+  if (nrow(spvE) > 0){
+    if (any(spvE$species %in% ctree$tip.label)){
+      wspvE <- which(spvE$species %in% ctree$tip.label)
+      spv <- c(spv, spvE$species[wspvE])
+    }
+  }#eo if 0
+  return(spv)
+}#eo function
